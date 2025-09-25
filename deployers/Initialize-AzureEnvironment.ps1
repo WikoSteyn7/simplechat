@@ -46,6 +46,13 @@ param(
     [string]$OpenAiName
 )
 
+# Validate and fix ACR name (must be lowercase, alphanumeric only)
+$OriginalACRName = $ACRName
+$ACRName = $ACRName.ToLower() -replace '[^a-z0-9]', ''
+if ($OriginalACRName -ne $ACRName) {
+    Write-Warning "ACR name '$OriginalACRName' has been converted to '$ACRName' (Azure Container Registry names must be lowercase and alphanumeric only)."
+}
+
 # Ensure Azure CLI is installed
 if (-not (Get-Command "az" -ErrorAction SilentlyContinue)) {
     Write-Error "Azure CLI is not installed. Please install it before running this script."
