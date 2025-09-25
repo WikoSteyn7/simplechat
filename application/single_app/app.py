@@ -309,7 +309,12 @@ def inject_settings():
             user_settings = get_user_settings(user_id) or {}
     except Exception as e:
         user_settings = {}
-    return dict(app_settings=public_settings, user_settings=user_settings)
+    
+    # Add authentication status for templates
+    auth_disabled = (os.getenv('DISABLE_AUTH', 'false').lower() == 'true' or 
+                    session.get('user', {}).get('id') == 'anonymous_user')
+    
+    return dict(app_settings=public_settings, user_settings=user_settings, auth_disabled=auth_disabled)
 
 @app.template_filter('to_datetime')
 def to_datetime_filter(value):

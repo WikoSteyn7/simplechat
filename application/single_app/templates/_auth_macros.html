@@ -1,0 +1,27 @@
+<!-- Authentication helper macros -->
+
+{% macro is_authenticated() %}
+  {{ auth_disabled or (session.get('user') and session['user'].get('roles') and ('Admin' in session['user']['roles'] or 'User' in session['user']['roles'])) }}
+{% endmacro %}
+
+{% macro is_admin() %}
+  {{ auth_disabled or (session.get('user') and session['user'].get('roles') and 'Admin' in session['user']['roles']) }}
+{% endmacro %}
+
+{% macro user_display_name() %}
+  {% if auth_disabled %}
+    Anonymous User
+  {% else %}
+    {{ session['user'].get('name', 'User') }}
+  {% endif %}
+{% endmacro %}
+
+{% macro user_account_type() %}
+  {% if auth_disabled %}
+    Development Mode
+  {% elif session.get('user') and 'Admin' in session['user']['roles'] %}
+    Admin account
+  {% else %}
+    Personal Account
+  {% endif %}
+{% endmacro %}

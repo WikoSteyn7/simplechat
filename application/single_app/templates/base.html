@@ -212,7 +212,7 @@
   {% block head %}{% endblock %}
 </head>
 
-<body class="d-flex flex-column min-vh-100{% if app_settings.classification_banner_enabled and app_settings.classification_banner_text %} has-classification-banner{% endif %}">
+<body class="d-flex flex-column min-vh-100{% if app_settings.classification_banner_enabled and app_settings.classification_banner_text %} has-classification-banner{% endif %}" data-auth-disabled="{{ 'true' if auth_disabled else 'false' }}">
   {% if app_settings.classification_banner_enabled and app_settings.classification_banner_text %}
     <div id="classification-banner"
          style="background: {{ app_settings.classification_banner_color or '#ffc107' }}; color: #fff; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: bold; padding: 0; height: 40px; font-size: 1.1em; letter-spacing: 0.5px; position: fixed; top: 0; left: 0; width: 100%; z-index: 1051;">
@@ -288,6 +288,9 @@
   <script>
     const appSettings = {{ app_settings|tojson|safe }};
   </script>
+
+  <!-- Authentication bypass script -->
+  <script src="/static/js/auth-bypass.js"></script>
 
   <!-- Prism.js syntax highlighting script -->
   <script>
