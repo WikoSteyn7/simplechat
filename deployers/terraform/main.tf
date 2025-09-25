@@ -164,7 +164,7 @@ variable "acr_password" {
 
 # Resource Naming Convention (matching PowerShell script logic)
 locals {
-  resource_group_name         = "sc-${var.param_base_name}-${var.param_environment}-rg"
+  resource_group_name         = "${var.param_base_name}-${var.param_environment}-rg"
   app_registration_name       = "${var.param_base_name}-${var.param_environment}-ar"
   app_service_plan_name       = "${var.param_base_name}-${var.param_environment}-asp"
   app_service_name            = "${var.param_base_name}-${var.param_environment}-app"
@@ -377,23 +377,23 @@ resource "azurerm_linux_web_app" "app" {
   #     }
   # }
 
-  auth_settings_v2 {
-    auth_enabled           = true
-    unauthenticated_action = "RedirectToLoginPage"
-    default_provider       = "azureactivedirectory"
-    require_authentication = true
-    require_https          = true
+  # auth_settings_v2 {
+  #   auth_enabled           = true
+  #   unauthenticated_action = "RedirectToLoginPage"
+  #   default_provider       = "azureactivedirectory"
+  #   require_authentication = true
+  #   require_https          = true
 
-    active_directory_v2 {
-      client_id = azuread_application.app_registration.client_id
-      client_secret_setting_name = "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET" # This should be allowed optional
-      tenant_auth_endpoint       = var.global_which_azure_platform == "AzureUSGovernment" ? "https://login.microsoftonline.us/${data.azuread_client_config.current.tenant_id}/v2.0" : "https://login.microsoftonline.com/${data.azuread_client_config.current.tenant_id}/v2.0"
-    }
+  #   active_directory_v2 {
+  #     client_id = azuread_application.app_registration.client_id
+  #     client_secret_setting_name = "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET" # This should be allowed optional
+  #     tenant_auth_endpoint       = var.global_which_azure_platform == "AzureUSGovernment" ? "https://login.microsoftonline.us/${data.azuread_client_config.current.tenant_id}/v2.0" : "https://login.microsoftonline.com/${data.azuread_client_config.current.tenant_id}/v2.0"
+  #   }
 
-    login {
-      token_store_enabled = true
-    }
-  }
+  #   login {
+  #     token_store_enabled = true
+  #   }
+  # }
 
   app_settings = {
     "AZURE_ENDPOINT"                = var.global_which_azure_platform == "AzureUSGovernment" ? "usgovernment" : "public"
@@ -425,6 +425,8 @@ resource "azurerm_linux_web_app" "app" {
     "XDT_MicrosoftApplicationInsights_BaseExtensions" = "disabled"
     "XDT_MicrosoftApplicationInsights_Mode" = "recommended"
     "XDT_MicrosoftApplicationInsights_PreemptSdk" = "disabled"
+    # Disable authentication completely
+    "DISABLE_AUTH" = "true"
   }
 
   site_config {
@@ -510,12 +512,16 @@ resource "azuread_application_api_access" "api_permissions" {
 }
 
 ##################################################################
-# **** Not working in Azure Government **** 
-# Grant admin consent - this is a manual step in the script for sovereign clouds.
+# **** ADMIN CONSENT STEP **** 
+# Grant admin consent - this requires high-level Azure AD privileges
+# If deployment fails here, comment out this resource and grant consent manually
 # "azuread_application" "app_registration"
 # "azuread_service_principal" "app_registration_sp"
 ##################################################################
+# Comment out this resource if you get permission errors during deployment
+# You'll need to grant admin consent manually via the Azure portal instead
 resource "azuread_service_principal_delegated_permission_grant" "delegatedpermissiongrant" {
+  count                                = 0  # Set to 1 if you have sufficient Azure AD privileges
   service_principal_object_id          = azuread_service_principal.app_registration_sp.object_id
   resource_service_principal_object_id = data.azuread_service_principal.msgraph.object_id
   claim_values                         = ["User.Read", "profile", "email", "Group.Read.All", "offline_access", "openid"]

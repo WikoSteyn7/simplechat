@@ -453,6 +453,18 @@ def accesstoken_required(f):
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check if authentication is disabled
+        if os.getenv('DISABLE_AUTH', 'false').lower() == 'true':
+            # Create a fake user session for compatibility
+            if "user" not in session:
+                session["user"] = {
+                    "id": "anonymous_user",
+                    "name": "Anonymous User",
+                    "email": "anonymous@localhost",
+                    "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
+                }
+            return f(*args, **kwargs)
+        
         if "user" not in session:
             is_api_request = (
                 request.accept_mimetypes.accept_json and
@@ -486,6 +498,18 @@ def login_required(f):
 def user_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check if authentication is disabled
+        if os.getenv('DISABLE_AUTH', 'false').lower() == 'true':
+            # Create a fake user session for compatibility
+            if "user" not in session:
+                session["user"] = {
+                    "id": "anonymous_user",
+                    "name": "Anonymous User",
+                    "email": "anonymous@localhost",
+                    "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
+                }
+            return f(*args, **kwargs)
+        
         user = session.get('user', {})
         if 'roles' not in user or ('User' not in user['roles'] and 'Admin' not in user['roles']):
              if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html or request.path.startswith('/api/'):
@@ -498,6 +522,18 @@ def user_required(f):
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check if authentication is disabled
+        if os.getenv('DISABLE_AUTH', 'false').lower() == 'true':
+            # Create a fake user session for compatibility
+            if "user" not in session:
+                session["user"] = {
+                    "id": "anonymous_user",
+                    "name": "Anonymous User",
+                    "email": "anonymous@localhost",
+                    "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
+                }
+            return f(*args, **kwargs)
+        
         user = session.get('user', {})
         if 'roles' not in user or 'Admin' not in user['roles']:
              if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html or request.path.startswith('/api/'):
@@ -510,6 +546,18 @@ def admin_required(f):
 def feedback_admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check if authentication is disabled
+        if os.getenv('DISABLE_AUTH', 'false').lower() == 'true':
+            # Create a fake user session for compatibility
+            if "user" not in session:
+                session["user"] = {
+                    "id": "anonymous_user",
+                    "name": "Anonymous User",
+                    "email": "anonymous@localhost",
+                    "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
+                }
+            return f(*args, **kwargs)
+        
         user = session.get('user', {})
         settings = get_settings()
         require_member_of_feedback_admin = settings.get("require_member_of_feedback_admin", False)
@@ -527,6 +575,18 @@ def feedback_admin_required(f):
 def safety_violation_admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check if authentication is disabled
+        if os.getenv('DISABLE_AUTH', 'false').lower() == 'true':
+            # Create a fake user session for compatibility
+            if "user" not in session:
+                session["user"] = {
+                    "id": "anonymous_user",
+                    "name": "Anonymous User",
+                    "email": "anonymous@localhost",
+                    "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
+                }
+            return f(*args, **kwargs)
+        
         user = session.get('user', {})
         settings = get_settings()
         require_member_of_safety_violation_admin = settings.get("require_member_of_safety_violation_admin", False)
@@ -544,6 +604,18 @@ def safety_violation_admin_required(f):
 def create_group_role_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check if authentication is disabled
+        if os.getenv('DISABLE_AUTH', 'false').lower() == 'true':
+            # Create a fake user session for compatibility
+            if "user" not in session:
+                session["user"] = {
+                    "id": "anonymous_user",
+                    "name": "Anonymous User",
+                    "email": "anonymous@localhost",
+                    "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
+                }
+            return f(*args, **kwargs)
+        
         user = session.get('user', {})
         settings = get_settings()
         require_member_of_create_group = settings.get("require_member_of_create_group", False)
