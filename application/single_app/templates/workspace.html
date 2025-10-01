@@ -267,6 +267,43 @@
 
           <!-- Document Upload Form -->
           <div class="mb-3">
+            <!-- Video Upload Mode Selector (Only show if video support is enabled) -->
+            {% if enable_video_file_support in [True, 'True', 'true'] %}
+            <div class="mb-3">
+              <div class="d-flex align-items-center justify-content-between">
+                <div>
+                  <label class="form-label mb-0 fw-bold">
+                    <i class="bi bi-camera-video text-primary me-2"></i>Video Upload Method
+                  </label>
+                  <div class="small text-muted">Choose how to handle video files</div>
+                </div>
+                <div class="btn-group btn-group-sm" role="group" id="video-upload-mode-toggle">
+                  <input type="radio" class="btn-check" name="video-upload-mode" id="video-mode-vimeo" value="vimeo" checked>
+                  <label class="btn btn-outline-primary" for="video-mode-vimeo">
+                    <i class="bi bi-cloud-upload me-1"></i>Auto-Upload to Vimeo
+                  </label>
+                  
+                  <input type="radio" class="btn-check" name="video-upload-mode" id="video-mode-manual" value="manual">
+                  <label class="btn btn-outline-secondary" for="video-mode-manual">
+                    <i class="bi bi-link-45deg me-1"></i>Manual URL
+                  </label>
+                </div>
+              </div>
+              
+              <!-- Vimeo Mode Info -->
+              <div id="vimeo-mode-info" class="mt-2 p-2 bg-light border-start border-primary border-3 rounded small">
+                <i class="bi bi-info-circle text-primary me-1"></i>
+                <strong>Automatic Vimeo Upload:</strong> Drag & drop videos below. They'll be uploaded to Vimeo, processed with AI, and streamed with professional quality (360p optimized).
+              </div>
+              
+              <!-- Manual Mode Info -->
+              <div id="manual-mode-info" class="mt-2 p-2 bg-light border-start border-secondary border-3 rounded small" style="display:none;">
+                <i class="bi bi-info-circle text-secondary me-1"></i>
+                <strong>Manual URL Mode:</strong> For videos already on Vimeo. Paste download or playback URL below.
+              </div>
+            </div>
+            {% endif %}
+            
             <div id="upload-area" class="upload-area text-center p-4 border border-2 border-dashed rounded bg-light" style="cursor:pointer; transition: border-color 0.2s;">
               <input type="file" id="workspace-file-input" multiple style="display:none;" />
               <div class="upload-area-content">
@@ -278,6 +315,28 @@
             <span id="upload-status" class="ms-2 text-muted small" style="display:none;"></span>
             <!-- Per-file upload progress bars -->
             <div id="workspace-upload-progress-container" class="mt-2" style="display:none;"></div>
+            
+            <!-- Vimeo URL Input Section (Only show if video support is enabled) -->
+            {% if enable_video_file_support in [True, 'True', 'true'] %}
+            <div id="vimeo-manual-url-section" class="mt-3 p-3 border rounded bg-white" style="display:none;">
+              <div class="d-flex align-items-center mb-2">
+                <i class="bi bi-link-45deg text-secondary me-2"></i>
+                <span class="fw-bold">Add Video from Vimeo Direct URL</span>
+              </div>
+              <div class="input-group">
+                <input type="text" id="vimeo-url-input" class="form-control" placeholder="Paste Vimeo download or playback URL (direct .mp4 link)" />
+                <button class="btn btn-secondary" type="button" id="submit-vimeo-btn">
+                  <i class="bi bi-plus-circle me-1"></i>Submit
+                </button>
+              </div>
+              <div class="small text-muted mt-1">
+                <i class="bi bi-exclamation-circle me-1"></i>
+                <strong>Use Vimeo direct URLs:</strong> Download URLs (/download/) or Playback URLs (/playback/).
+                <br>Regular vimeo.com URLs won't work due to Azure Video Indexer limitations.
+              </div>
+              <div id="vimeo-status" class="mt-2 small" style="display:none;"></div>
+            </div>
+            {% endif %}
           </div>
 
           <!-- Document Filters -->

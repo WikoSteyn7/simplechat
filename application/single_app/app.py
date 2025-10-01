@@ -91,7 +91,18 @@ from functions_global_agents import ensure_default_global_agent_exists
 
 from route_external_health import *
 
-configure_azure_monitor()
+# Configure Azure Monitor (Application Insights) if connection string is available
+# For local development, this is optional
+try:
+    appinsights_connection_string = os.environ.get('APPLICATIONINSIGHTS_CONNECTION_STRING')
+    if appinsights_connection_string:
+        configure_azure_monitor()
+        print("✅ Azure Monitor (Application Insights) configured successfully")
+    else:
+        print("ℹ️  Azure Monitor not configured (no connection string) - Running in local mode")
+except Exception as e:
+    print(f"⚠️  Azure Monitor configuration skipped: {str(e)}")
+    print("   (This is normal for local development)")
 
 
 # =================== Helper Functions ===================

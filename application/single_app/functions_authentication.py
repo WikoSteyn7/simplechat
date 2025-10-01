@@ -459,8 +459,10 @@ def login_required(f):
             if "user" not in session:
                 session["user"] = {
                     "id": "anonymous_user",
+                    "oid": "anonymous_user",  # Add oid for compatibility
                     "name": "Anonymous User",
                     "email": "anonymous@localhost",
+                    "preferred_username": "anonymous@localhost",
                     "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
                 }
             return f(*args, **kwargs)
@@ -504,8 +506,10 @@ def user_required(f):
             if "user" not in session:
                 session["user"] = {
                     "id": "anonymous_user",
+                    "oid": "anonymous_user",  # Add oid for compatibility
                     "name": "Anonymous User",
                     "email": "anonymous@localhost",
+                    "preferred_username": "anonymous@localhost",
                     "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
                 }
             return f(*args, **kwargs)
@@ -528,8 +532,10 @@ def admin_required(f):
             if "user" not in session:
                 session["user"] = {
                     "id": "anonymous_user",
+                    "oid": "anonymous_user",  # Add oid for compatibility
                     "name": "Anonymous User",
                     "email": "anonymous@localhost",
+                    "preferred_username": "anonymous@localhost",
                     "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
                 }
             return f(*args, **kwargs)
@@ -552,8 +558,10 @@ def feedback_admin_required(f):
             if "user" not in session:
                 session["user"] = {
                     "id": "anonymous_user",
+                    "oid": "anonymous_user",  # Add oid for compatibility
                     "name": "Anonymous User",
                     "email": "anonymous@localhost",
+                    "preferred_username": "anonymous@localhost",
                     "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
                 }
             return f(*args, **kwargs)
@@ -581,8 +589,10 @@ def safety_violation_admin_required(f):
             if "user" not in session:
                 session["user"] = {
                     "id": "anonymous_user",
+                    "oid": "anonymous_user",  # Add oid for compatibility
                     "name": "Anonymous User",
                     "email": "anonymous@localhost",
+                    "preferred_username": "anonymous@localhost",
                     "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
                 }
             return f(*args, **kwargs)
@@ -610,8 +620,10 @@ def create_group_role_required(f):
             if "user" not in session:
                 session["user"] = {
                     "id": "anonymous_user",
+                    "oid": "anonymous_user",  # Add oid for compatibility
                     "name": "Anonymous User",
                     "email": "anonymous@localhost",
+                    "preferred_username": "anonymous@localhost",
                     "roles": ["Admin", "User", "CreateGroups", "FeedbackAdmin", "SafetyViolationAdmin"]
                 }
             return f(*args, **kwargs)
@@ -650,7 +662,8 @@ def create_public_workspace_role_required(f):
 def get_current_user_id():
     user = session.get('user')
     if user:
-        return user.get('oid')
+        # Return 'id' field for anonymous users, 'oid' for Azure AD users
+        return user.get('oid') or user.get('id')
     return None
 
 def get_current_user_info():
@@ -668,6 +681,10 @@ def get_user_profile_image():
     Fetches the user's profile image from Microsoft Graph and returns it as base64.
     Returns None if no image is found or if there's an error.
     """
+    # Skip Graph API call if auth is disabled
+    if os.getenv('DISABLE_AUTH', 'false').lower() == 'true':
+        return None
+    
     token = get_valid_access_token()
     if not token:
         print("get_user_profile_image: Could not acquire access token")

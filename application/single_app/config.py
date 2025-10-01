@@ -105,7 +105,7 @@ SECURITY_HEADERS = {
         "img-src 'self' data: https: blob:; "
         "font-src 'self' https://cdn.jsdelivr.net https://stackpath.bootstrapcdn.com; "
         "connect-src 'self' https: wss: ws:; "
-        "media-src 'self' blob:; "
+        "media-src 'self' blob: https://player.vimeo.com https://*.vimeo.com https://*.vimeocdn.com; "
         "object-src 'none'; "
         "frame-ancestors 'none'; "
         "base-uri 'self';"
@@ -115,6 +115,11 @@ SECURITY_HEADERS = {
 # Security Configuration
 ENABLE_STRICT_TRANSPORT_SECURITY = os.getenv('ENABLE_HSTS', 'false').lower() == 'true'
 HSTS_MAX_AGE = int(os.getenv('HSTS_MAX_AGE', '31536000'))  # 1 year default
+
+# Vimeo Integration Configuration
+VIMEO_ACCESS_TOKEN = os.getenv('VIMEO_ACCESS_TOKEN')  # Personal Access Token from developer.vimeo.com
+VIMEO_ENABLE_UPLOAD = os.getenv('VIMEO_ENABLE_UPLOAD', 'false').lower() == 'true'
+VIMEO_PREFERRED_QUALITY = os.getenv('VIMEO_PREFERRED_QUALITY', '360p')  # Default quality for downloads and playback
 
 CLIENTS = {}
 CLIENTS_LOCK = threading.Lock()

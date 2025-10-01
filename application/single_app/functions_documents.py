@@ -6,12 +6,136 @@ from functions_settings import *
 from functions_search import *
 from functions_logging import *
 from functions_authentication import *
+import re
+from urllib.parse import urlparse
 
 def allowed_file(filename, allowed_extensions=None):
     if not allowed_extensions:
         allowed_extensions = ALLOWED_EXTENSIONS
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
+def validate_vimeo_url(url):
+    """
+    Validate and normalize Vimeo URL.
+    Supports formats:
+    - https://vimeo.com/XXXXXXXXX
+    - https://vimeo.com/XXXXXXXXX/YYYYYYYYYYYY (unlisted with hash)
+    - https://player.vimeo.com/video/XXXXXXXXX
+    - https://player.vimeo.com/progressive_redirect/download/XXXXXXXXX/... (download links)
+    Returns: (is_valid, normalized_url, video_id, error_message)
+    """
+    from functions_debug import debug_print
+    
+    if not url or not isinstance(url, str):
+        return False, None, None, "URL is required and must be a string"
+    
+    url = url.strip()
+    
+    # Parse URL
+    try:
+        parsed = urlparse(url)
+    except Exception as e:
+        return False, None, None, f"Invalid URL format: {str(e)}"
+    
+    # Check if it's a Vimeo URL
+    if parsed.netloc not in ['vimeo.com', 'www.vimeo.com', 'player.vimeo.com']:
+        return False, None, None, "URL must be from vimeo.com"
+    
+    # Extract video ID and privacy hash
+    # Pattern 1: https://vimeo.com/XXXXXXXXX or https://vimeo.com/XXXXXXXXX/YYYYYYYYYYYY
+    pattern1 = r'^/(\d+)(?:/([a-zA-Z0-9]+))?$'
+    # Pattern 2: https://player.vimeo.com/video/XXXXXXXXX
+    pattern2 = r'^/video/(\d+)$'
+    # Pattern 3: https://player.vimeo.com/progressive_redirect/download/XXXXXXXXX/... OR /playback/XXXXXXXXX/...
+    pattern3 = r'^/progressive_redirect/(?:download|playback)/(\d+)/'
+    
+    video_id = None
+    privacy_hash = None
+    
+    match1 = re.match(pattern1, parsed.path)
+    match2 = re.match(pattern2, parsed.path)
+    match3 = re.match(pattern3, parsed.path)
+    
+    if match1:
+        video_id = match1.group(1)
+        privacy_hash = match1.group(2)  # May be None for public videos
+    elif match2:
+        video_id = match2.group(1)
+    elif match3:
+        # Download/playback link - this is a direct media file URL, use it as-is!
+        video_id = match3.group(1)
+        
+        # Detect if this is a download or playback URL
+        is_download = '/download/' in url
+        is_playback = '/playback/' in url
+        
+        if is_download:
+            debug_print(f"[VIMEO VALIDATION] Detected download link (direct media file), extracted video ID: {video_id}")
+        elif is_playback:
+            debug_print(f"[VIMEO VALIDATION] Detected playback link (streaming optimized), extracted video ID: {video_id}")
+        
+        debug_print(f"[VIMEO VALIDATION] Using direct media URL as-is for Video Indexer: {url}")
+        
+        # Return the original URL, NOT a vimeo.com page URL
+        # Both download and playback URLs are direct .mp4 files which Video Indexer supports
+        return True, url, video_id, None
+    else:
+        return False, None, None, "Invalid Vimeo URL format. Expected: https://vimeo.com/VIDEO_ID or https://vimeo.com/VIDEO_ID/HASH"
+    
+    # Construct normalized URL for non-download links (streaming pages won't work with Video Indexer!)
+    if privacy_hash:
+        normalized_url = f"https://vimeo.com/{video_id}/{privacy_hash}"
+    else:
+        normalized_url = f"https://vimeo.com/{video_id}"
+    
+    debug_print(f"[VIMEO VALIDATION] Valid URL: {normalized_url}, Video ID: {video_id}")
+    debug_print(f"[VIMEO VALIDATION] WARNING: This is a Vimeo streaming page URL, not a direct media file. Video Indexer may reject this.")
+    return True, normalized_url, video_id, None
+
+def validate_vimeo_accessibility(url):
+    """
+    Test if Vimeo URL is accessible by making a HEAD request.
+    For download URLs, this verifies the direct media file is accessible.
+    For streaming URLs, this checks if the page exists (but Video Indexer may still reject it).
+    Returns: (is_accessible, error_message)
+    """
+    from functions_debug import debug_print
+    
+    try:
+        debug_print(f"[VIMEO VALIDATION] Testing accessibility for: {url}")
+        
+        # For download URLs, use GET with stream=True instead of HEAD (some servers don't support HEAD)
+        is_download_url = '/progressive_redirect/download/' in url
+        
+        if is_download_url:
+            debug_print(f"[VIMEO VALIDATION] Download URL detected, using GET request with streaming")
+            response = requests.get(url, timeout=10, allow_redirects=True, stream=True)
+            # Close immediately after checking headers
+            response.close()
+        else:
+            response = requests.head(url, timeout=10, allow_redirects=True)
+        
+        if response.status_code == 200:
+            debug_print(f"[VIMEO VALIDATION] URL is accessible (status: {response.status_code})")
+            if is_download_url:
+                debug_print(f"[VIMEO VALIDATION] Direct media file confirmed - Video Indexer should accept this")
+            else:
+                debug_print(f"[VIMEO VALIDATION] WARNING: Streaming page URL - Video Indexer may reject this (streaming services not supported)")
+            return True, None
+        elif response.status_code == 403:
+            return False, "Video is private or access is restricted. For download URLs, the signature may be expired. For streaming URLs, ensure embed settings allow 'Anywhere'."
+        elif response.status_code == 404:
+            return False, "Video not found. Please verify the URL is correct and the video exists."
+        else:
+            debug_print(f"[VIMEO VALIDATION] Unexpected status code: {response.status_code}")
+            return False, f"Could not verify video accessibility (HTTP {response.status_code})"
+            
+    except requests.exceptions.Timeout:
+        return False, "Request timed out. Please check your network connection."
+    except requests.exceptions.RequestException as e:
+        debug_print(f"[VIMEO VALIDATION] Accessibility check failed: {str(e)}")
+        return False, f"Could not verify video accessibility: {str(e)}"
     
 def create_document(file_name, user_id, document_id, num_file_chunks, status, group_id=None, public_workspace_id=None):
     current_time = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -306,6 +430,98 @@ def save_video_chunk(
         debug_print(f"[VIDEO CHUNK] Unexpected error processing chunk: {str(e)}")
         print(f"[VideoChunk] UNEXPECTED ERROR for {document_id}@{start_time}: {e}", flush=True)
 
+def process_vimeo_video_workflow(
+    document_id,
+    user_id,
+    temp_file_path,
+    original_filename,
+    file_size,
+    update_callback
+):
+    """
+    Complete workflow for Vimeo video: Upload to Vimeo, then process with Video Indexer.
+    
+    Args:
+        document_id: Document ID
+        user_id: User ID
+        temp_file_path: Temporary file path
+        original_filename: Original filename
+        file_size: File size in bytes
+        update_callback: Callback for status updates
+    """
+    from functions_vimeo import upload_and_process_vimeo_video
+    from functions_debug import debug_print
+    
+    debug_print(f"[VIMEO WORKFLOW] Starting for document: {document_id}")
+    
+    try:
+        # Step 1: Upload to Vimeo and get URLs
+        debug_print(f"[VIMEO WORKFLOW] Uploading to Vimeo...")
+        vimeo_result = upload_and_process_vimeo_video(
+            file_path=temp_file_path,
+            filename=original_filename,
+            file_size=file_size,
+            update_callback=update_callback
+        )
+        
+        download_url = vimeo_result['download_url']
+        playback_url = vimeo_result['playback_url']
+        video_id = vimeo_result['video_id']
+        
+        debug_print(f"[VIMEO WORKFLOW] Upload complete! Video ID: {video_id}")
+        debug_print(f"[VIMEO WORKFLOW] Download URL: {download_url[:100]}...")
+        debug_print(f"[VIMEO WORKFLOW] Playback URL: {playback_url[:100]}...")
+        
+        # Update document with Vimeo URLs
+        update_document(
+            document_id=document_id,
+            user_id=user_id,
+            vimeo_url=download_url,  # Store download URL for Video Indexer
+            vimeo_playback_url=playback_url,  # Store playback URL for streaming
+            vimeo_video_id=video_id
+        )
+        
+        # Step 2: Process with Video Indexer
+        debug_print(f"[VIMEO WORKFLOW] Processing with Video Indexer...")
+        update_callback(status="Processing with Video Indexer...")
+        
+        total_chunks = process_video_document(
+            document_id=document_id,
+            user_id=user_id,
+            temp_file_path=None,  # No file path needed for URL-based processing
+            original_filename=original_filename,
+            update_callback=update_callback,
+            group_id=None,
+            public_workspace_id=None,
+            vimeo_url=download_url  # Use download URL for Video Indexer
+        )
+        
+        debug_print(f"[VIMEO WORKFLOW] Workflow complete! {total_chunks} chunks created")
+        
+        # Clean up temp file
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+                debug_print(f"[VIMEO WORKFLOW] Cleaned up temp file: {temp_file_path}")
+            except Exception as e:
+                debug_print(f"[VIMEO WORKFLOW] Failed to clean up temp file: {e}")
+        
+        return total_chunks
+        
+    except Exception as e:
+        debug_print(f"[VIMEO WORKFLOW] ERROR: {str(e)}")
+        update_callback(status=f"Error: {str(e)}")
+        
+        # Clean up temp file on error
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        
+        raise
+
+
 def process_video_document(
     document_id,
     user_id,
@@ -313,17 +529,31 @@ def process_video_document(
     original_filename,
     update_callback,
     group_id,
-    public_workspace_id=None
+    public_workspace_id=None,
+    vimeo_url=None,
+    vimeo_playback_url=None
 ):
     """
     Processes a video by dividing transcript into 30-second chunks,
     extracting OCR separately, and saving each as a chunk with safe IDs.
+    
+    Args:
+        vimeo_url: Optional Vimeo URL. If provided, video is processed from URL instead of file upload.
+        vimeo_playback_url: Optional separate playback URL for optimized streaming.
     """
     from functions_debug import debug_print
     
-    debug_print(f"[VIDEO INDEXER] Starting video processing for file: {original_filename}")
+    is_vimeo = vimeo_url is not None
+    
+    debug_print(f"[VIDEO INDEXER] Starting video processing for: {original_filename}")
+    debug_print(f"[VIDEO INDEXER] Mode: {'Vimeo URL' if is_vimeo else 'File Upload'}")
+    if is_vimeo:
+        debug_print(f"[VIDEO INDEXER] Vimeo URL: {vimeo_url}")
+        if vimeo_playback_url:
+            debug_print(f"[VIDEO INDEXER] Playback URL: {vimeo_playback_url}")
     debug_print(f"[VIDEO INDEXER] Document ID: {document_id}, User ID: {user_id}, Group ID: {group_id}, Public Workspace ID: {public_workspace_id}")
-    debug_print(f"[VIDEO INDEXER] Temp file path: {temp_file_path}")
+    if not is_vimeo:
+        debug_print(f"[VIDEO INDEXER] Temp file path: {temp_file_path}")
 
     def to_seconds(ts: str) -> float:
         parts = ts.split(':')
@@ -344,7 +574,8 @@ def process_video_document(
     
     debug_print("[VIDEO INDEXER] Video file support is enabled, proceeding with indexing")
     
-    if settings.get("enable_enhanced_citations", False):
+    # Skip blob storage upload for Vimeo videos (Vimeo handles streaming)
+    if settings.get("enable_enhanced_citations", False) and not is_vimeo:
         debug_print("[VIDEO INDEXER] Enhanced citations enabled, uploading to blob storage")
         update_callback(status="Uploading video for enhanced citations...")
         try:
@@ -361,9 +592,11 @@ def process_video_document(
             debug_print(f"[VIDEO INDEXER] Blob upload successful: {blob_path}")
             update_callback(status=f"Enhanced citations: video at {blob_path}")
         except Exception as e:
-            debug_print(f"[VIDEO INDEXER] Blob upload failed: {str(e)}")
-            print(f"[VIDEO] BLOB UPLOAD ERROR: {e}", flush=True)
+            debug_print(f"[VIDEO] BLOB UPLOAD ERROR: {e}", flush=True)
             update_callback(status=f"VIDEO: blob upload failed → {e}")
+    elif is_vimeo:
+        debug_print("[VIDEO INDEXER] Vimeo video detected, skipping blob storage upload (Vimeo handles streaming)")
+        update_callback(status="Using Vimeo streaming (no blob upload needed)")
 
     vi_ep, vi_loc, vi_acc = (
         settings["video_indexer_endpoint"],
@@ -402,26 +635,38 @@ def process_video_document(
         update_callback(status=f"VIDEO: auth failed → {e}")
         return 0
 
-    # 2) Upload video to Indexer
+    # 2) Upload video to Indexer or provide URL
     try:
         url = f"{vi_ep}/{vi_loc}/Accounts/{vi_acc}/Videos"
         params = {"accessToken": token, "name": original_filename}
         
-        debug_print(f"[VIDEO INDEXER] Upload URL: {url}")
-        debug_print(f"[VIDEO INDEXER] Upload params: {params}")
-        debug_print(f"[VIDEO INDEXER] Starting file upload for: {original_filename}")
+        if is_vimeo:
+            # Use videoUrl parameter for Vimeo videos
+            params["videoUrl"] = vimeo_url
+            debug_print(f"[VIDEO INDEXER] Upload URL: {url}")
+            debug_print(f"[VIDEO INDEXER] Upload params (Vimeo mode): {params}")
+            debug_print(f"[VIDEO INDEXER] Submitting Vimeo URL to Video Indexer: {vimeo_url}")
+            update_callback(status=f"Submitting Vimeo video to indexer...")
+            
+            resp = requests.post(url, params=params)
+        else:
+            # Traditional file upload
+            debug_print(f"[VIDEO INDEXER] Upload URL: {url}")
+            debug_print(f"[VIDEO INDEXER] Upload params (File mode): {params}")
+            debug_print(f"[VIDEO INDEXER] Starting file upload for: {original_filename}")
+            update_callback(status=f"Uploading video file to indexer...")
+            
+            with open(temp_file_path, "rb") as f:
+                resp = requests.post(url, params=params, files={"file": f})
         
-        with open(temp_file_path, "rb") as f:
-            resp = requests.post(url, params=params, files={"file": f})
-        
-        debug_print(f"[VIDEO INDEXER] Upload response status: {resp.status_code}")
+        debug_print(f"[VIDEO INDEXER] Response status: {resp.status_code}")
         
         if resp.status_code != 200:
-            debug_print(f"[VIDEO INDEXER] Upload response text: {resp.text}")
+            debug_print(f"[VIDEO INDEXER] Response text: {resp.text}")
             
         resp.raise_for_status()
         response_data = resp.json()
-        debug_print(f"[VIDEO INDEXER] Upload response keys: {list(response_data.keys())}")
+        debug_print(f"[VIDEO INDEXER] Response keys: {list(response_data.keys())}")
         
         vid = response_data.get("id")
         if not vid:
@@ -433,14 +678,21 @@ def process_video_document(
         update_callback(status=f"VIDEO: uploaded id={vid}")
         
         try:
-            # Update the document's metadata with the video indexer ID
+            # Update the document's metadata with the video indexer ID and Vimeo URL
             debug_print(f"[VIDEO INDEXER] Updating document metadata with video_indexer_id: {vid}")
-            update_document(
-                document_id=document_id,
-                user_id=user_id,
-                group_id=group_id,
-                video_indexer_id=vid
-            )
+            update_params = {
+                "document_id": document_id,
+                "user_id": user_id,
+                "group_id": group_id,
+                "video_indexer_id": vid
+            }
+            
+            # Store Vimeo URL in document metadata if provided
+            if is_vimeo:
+                update_params["vimeo_url"] = vimeo_url
+                debug_print(f"[VIDEO INDEXER] Storing Vimeo URL in document metadata: {vimeo_url}")
+            
+            update_document(**update_params)
             debug_print(f"[VIDEO INDEXER] Document metadata updated successfully")
         except Exception as e:
             debug_print(f"[VIDEO INDEXER] Failed to update document metadata: {str(e)}")

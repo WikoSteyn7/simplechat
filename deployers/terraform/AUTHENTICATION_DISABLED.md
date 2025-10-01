@@ -18,7 +18,7 @@ This document describes the changes made to disable Azure Entra ID authenticatio
 
 ### 2. Application Code Changes
 
-#### Authentication Decorators Modified
+#### Backend Authentication Decorators Modified
 - **File**: `functions_authentication.py`
 - **Functions Modified**:
   - `login_required()`
@@ -43,6 +43,33 @@ if os.getenv('DISABLE_AUTH', 'false').lower() == 'true':
         }
     return f(*args, **kwargs)
 ```
+
+### 3. Frontend Code Changes
+
+#### Template Context Processor
+- **File**: `app.py`
+- **Change**: Added `auth_disabled` variable to global template context
+- **Effect**: Makes authentication status available to all templates
+
+#### Templates Modified
+- **File**: `index.html`
+- **Change**: Updated authentication check to use global `auth_disabled` variable
+- **Effect**: Shows "Start Chatting" button without authentication
+
+#### JavaScript Authentication Bypass
+- **File**: `static/js/auth-bypass.js` (NEW)
+- **Purpose**: Handles failed API calls gracefully when authentication is disabled
+- **Features**:
+  - Provides fallback responses for `/api/user/settings` calls
+  - Handles profile image refresh failures
+  - Sets global flag for other scripts
+
+#### Base Template Updates
+- **File**: `base.html`
+- **Changes**: 
+  - Added `data-auth-disabled` attribute to body element
+  - Included auth-bypass.js script
+- **Effect**: Enables frontend authentication bypass functionality
 
 ## Current State
 
@@ -111,6 +138,7 @@ To re-enable authentication:
 
 ## Files Modified
 
+### Backend Files
 1. `simplechat/deployers/terraform/main.tf`
    - Commented out `auth_settings_v2` block
    - Added `DISABLE_AUTH` environment variable
@@ -118,6 +146,23 @@ To re-enable authentication:
 2. `simplechat/application/single_app/functions_authentication.py`
    - Modified all authentication decorator functions
    - Added authentication bypass logic
+
+3. `simplechat/application/single_app/app.py`
+   - Updated context processor to include `auth_disabled` variable
+
+### Frontend Files
+4. `simplechat/application/single_app/templates/index.html`
+   - Updated authentication check logic
+
+5. `simplechat/application/single_app/templates/base.html`
+   - Added `data-auth-disabled` attribute
+   - Included auth-bypass.js script
+
+6. `simplechat/application/single_app/static/js/auth-bypass.js` (NEW)
+   - JavaScript authentication bypass functionality
+
+7. `simplechat/application/single_app/templates/_auth_macros.html` (NEW)
+   - Template macros for consistent authentication checks
 
 ## Deployment Status
 

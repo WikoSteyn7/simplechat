@@ -76,3 +76,4 @@ Your SimpleChat application should now be fully functional. Consider:
 - Setting up monitoring and alerts
 - Configuring backup strategies
 - Planning for scaling if needed
+

@@ -181,15 +181,119 @@ export function showVideoModal(docId, timestamp, fileName) {
         videoModal = createVideoModal();
     }
     
-    // Set video source and title directly to the server endpoint
-    const video = videoModal.querySelector("#enhanced-video");
+    const videoContainer = videoModal.querySelector(".video-container");
     const title = videoModal.querySelector(".modal-title");
+    
+    // First, check if this is a Vimeo video by querying the endpoint
+    const checkUrl = `/api/enhanced_citations/video?doc_id=${encodeURIComponent(docId)}`;
+    
+    fetch(checkUrl)
+        .then(response => response.json())
+        .then(data => {
+            if (data.type === 'vimeo' && data.vimeo_url) {
+                // This is a Vimeo video with direct media URL (download or playback)
+                // Both types work in HTML5 video player
+                console.log(`Detected Vimeo video with direct URL: ${data.vimeo_url}`);
+                showVimeoDirectPlayer(videoModal, videoContainer, data.vimeo_url, timestamp, fileName);
+            } else {
+                // Traditional video file - use blob storage video player
+                console.log(`Detected blob storage video`);
+                showBlobVideoPlayer(videoModal, videoContainer, docId, timestamp, fileName);
+            }
+            hideLoadingIndicator();
+        })
+        .catch(error => {
+            console.error('Error checking video type:', error);
+            // Fallback to traditional video player
+            showBlobVideoPlayer(videoModal, videoContainer, docId, timestamp, fileName);
+            hideLoadingIndicator();
+        });
+}
+
+function showVimeoDirectPlayer(videoModal, videoContainer, vimeoDirectUrl, timestamp, fileName) {
+    console.log(`Loading Vimeo direct player with URL: ${vimeoDirectUrl}`);
+    
+    // Convert timestamp to seconds
+    const timeInSeconds = convertTimestampToSeconds(timestamp);
+    console.log(`Will seek to: ${timeInSeconds} seconds`);
+    
+    // Clear container and add video element with direct Vimeo URL
+    // Works with both download URLs (/download/) and playback URLs (/playback/)
+    videoContainer.innerHTML = `
+        <video id="enhanced-video" controls class="w-100" style="max-height: 70vh;">
+            <source src="${vimeoDirectUrl}" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    `;
+    
+    const video = videoContainer.querySelector("#enhanced-video");
+    const title = videoModal.querySelector(".modal-title");
+    title.textContent = `Video: ${fileName}`;
+    
+    // Set up video events
+    video.onloadedmetadata = function() {
+        console.log(`Vimeo video loaded. Duration: ${video.duration} seconds.`);
+        
+        // Seek to timestamp
+        if (timeInSeconds > 0 && timeInSeconds < video.duration) {
+            video.currentTime = timeInSeconds;
+            console.log(`Seeked to ${timeInSeconds} seconds`);
+        } else if (timeInSeconds >= video.duration) {
+            console.warn(`Timestamp ${timeInSeconds} is beyond video duration ${video.duration}, setting to end`);
+            video.currentTime = Math.max(0, video.duration - 1);
+        }
+    };
+    
+    video.onerror = function(e) {
+        console.error('Error loading Vimeo video:', e);
+        console.error('Video error code:', video.error ? video.error.code : 'unknown');
+        
+        let errorMsg = 'Could not load video from Vimeo. ';
+        if (video.error) {
+            switch(video.error.code) {
+                case 1: errorMsg += 'The video loading was aborted.'; break;
+                case 2: errorMsg += 'A network error occurred.'; break;
+                case 3: errorMsg += 'The video file is corrupted or unsupported.'; break;
+                case 4: errorMsg += 'The video source is not available.'; break;
+                default: errorMsg += 'Unknown error.';
+            }
+        }
+        errorMsg += ' The Vimeo URL signature may have expired - try re-submitting the video with a fresh URL.';
+        
+        showToast(errorMsg, 'danger');
+    };
+    
+    // Show modal
+    const modalInstance = new bootstrap.Modal(videoModal);
+    
+    // Add event listener to clean up when modal is hidden
+    videoModal.addEventListener('hidden.bs.modal', function () {
+        if (video) {
+            video.pause();
+            video.currentTime = 0;
+        }
+        videoContainer.innerHTML = ''; // Clear video
+    }, { once: true });
+    
+    modalInstance.show();
+}
+
+function showBlobVideoPlayer(videoModal, videoContainer, docId, timestamp, fileName) {
+    console.log(`Loading blob storage video for docId: ${docId}`);
     
     // Use the server-side rendering endpoint directly as video source
     const videoUrl = `/api/enhanced_citations/video?doc_id=${encodeURIComponent(docId)}`;
     
+    // Clear container and add video element
+    videoContainer.innerHTML = `
+        <video id="enhanced-video" controls class="w-100" style="max-height: 70vh;">
+            Your browser does not support the video tag.
+        </video>
+    `;
+    
+    const video = videoContainer.querySelector("#enhanced-video");
+    
     video.onloadedmetadata = function() {
-        hideLoadingIndicator();
         console.log(`Video loaded. Duration: ${video.duration} seconds.`);
         
         // Convert timestamp to seconds if needed
@@ -205,12 +309,13 @@ export function showVideoModal(docId, timestamp, fileName) {
     };
     
     video.onerror = function() {
-        hideLoadingIndicator();
         console.error('Error loading video');
         showToast('Could not load video', 'danger');
     };
     
     video.src = videoUrl;
+    
+    const title = videoModal.querySelector(".modal-title");
     title.textContent = `Video: ${fileName}`;
     
     // Show modal
@@ -218,14 +323,35 @@ export function showVideoModal(docId, timestamp, fileName) {
     
     // Add event listener to stop video when modal is hidden
     videoModal.addEventListener('hidden.bs.modal', function () {
-        const video = videoModal.querySelector('#enhanced-video');
+        const video = videoContainer.querySelector('#enhanced-video');
         if (video) {
             video.pause();
             video.currentTime = 0; // Reset to beginning for next time
         }
-    }, { once: true }); // Use once: true to prevent multiple listeners
+    }, { once: true });
     
     modalInstance.show();
+}
+
+function extractVimeoId(vimeoUrl) {
+    // Extract video ID from various Vimeo URL formats
+    // https://vimeo.com/XXXXXXXXX
+    // https://vimeo.com/XXXXXXXXX/HASH
+    // https://player.vimeo.com/video/XXXXXXXXX
+    
+    const patterns = [
+        /vimeo\.com\/(\d+)/,  // Matches vimeo.com/XXXXXXXXX
+        /player\.vimeo\.com\/video\/(\d+)/  // Matches player.vimeo.com/video/XXXXXXXXX
+    ];
+    
+    for (const pattern of patterns) {
+        const match = vimeoUrl.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    
+    return null;
 }
 
 /**
@@ -376,9 +502,9 @@ function createVideoModal() {
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <video id="enhanced-video" controls class="w-100" style="max-height: 70vh;">
-                        Your browser does not support the video tag.
-                    </video>
+                    <div class="video-container">
+                        <!-- Video player or Vimeo iframe will be dynamically inserted here -->
+                    </div>
                 </div>
             </div>
         </div>

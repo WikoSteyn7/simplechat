@@ -14,6 +14,7 @@ from functions_settings import get_settings, enabled_required
 from functions_documents import get_document_metadata
 from functions_group import get_user_groups
 from functions_public_workspaces import get_user_visible_public_workspace_ids_from_settings
+from functions_debug import debug_print
 from config import CLIENTS, storage_account_user_documents_container_name, storage_account_group_documents_container_name, storage_account_public_documents_container_name
 
 def register_enhanced_citations_routes(app):
@@ -63,7 +64,7 @@ def register_enhanced_citations_routes(app):
     @enabled_required("enable_enhanced_citations")
     def get_enhanced_citation_video():
         """
-        Serve video file content directly for enhanced citations
+        Serve video file content directly for enhanced citations or return Vimeo URL metadata
         """
         doc_id = request.args.get("doc_id")
         if not doc_id:
@@ -89,7 +90,26 @@ def register_enhanced_citations_routes(app):
             if ext not in video_extensions:
                 return jsonify({"error": "File is not a video"}), 400
 
-            # Serve the video content directly
+            # Check if this is a Vimeo video
+            vimeo_url = raw_doc.get('vimeo_url')
+            if vimeo_url:
+                # Return Vimeo URL as JSON metadata instead of serving file
+                # Prefer vimeo_playback_url if available (optimized for streaming)
+                # Otherwise use vimeo_url (works for both download and playback URLs)
+                
+                playback_url = raw_doc.get('vimeo_playback_url', vimeo_url)
+                
+                debug_print(f"[ENHANCED CITATIONS] Vimeo video detected")
+                debug_print(f"[ENHANCED CITATIONS] Using playback URL: {playback_url[:100]}...")
+                
+                return jsonify({
+                    "type": "vimeo",
+                    "vimeo_url": playback_url,  # Use playback URL for streaming
+                    "file_name": file_name,
+                    "video_id": raw_doc.get('vimeo_video_id')
+                }), 200
+            
+            # Traditional video file - serve from blob storage
             return serve_enhanced_citation_content(raw_doc, content_type='video/mp4')
 
         except Exception as e:

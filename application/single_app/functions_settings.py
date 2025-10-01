@@ -418,6 +418,19 @@ def decrypt_key(encrypted_key):
 def get_user_settings(user_id):
     """Fetches the user settings document from Cosmos DB, ensuring email and display_name are present if possible."""
     from flask import session
+    
+    # If auth is disabled or user_id is None, return default settings
+    if os.getenv('DISABLE_AUTH', 'false').lower() == 'true' or user_id is None:
+        return {
+            "id": "anonymous_user",
+            "email": "anonymous@localhost",
+            "display_name": "Anonymous User",
+            "settings": {
+                "navLayout": "top",
+                "profileImage": None
+            }
+        }
+    
     try:
         doc = cosmos_user_settings_container.read_item(item=user_id, partition_key=user_id)
         # Ensure the settings key exists for consistency downstream

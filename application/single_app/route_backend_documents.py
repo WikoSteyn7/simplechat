@@ -207,6 +207,203 @@ def register_route_backend_documents(app):
             'errors': upload_errors
         }), response_status
 
+    @app.route('/api/documents/upload_vimeo', methods=['POST'])
+    @login_required
+    @user_required
+    @enabled_required("enable_user_workspace")
+    def api_user_upload_vimeo():
+        """
+        Upload a video from Vimeo URL for processing.
+        Validates the URL and submits to Video Indexer for analysis.
+        """
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        vimeo_url = data.get('vimeo_url')
+        if not vimeo_url:
+            return jsonify({'error': 'vimeo_url is required'}), 400
+        
+        # Validate Vimeo URL format
+        is_valid, normalized_url, video_id, error_msg = validate_vimeo_url(vimeo_url)
+        if not is_valid:
+            return jsonify({'error': f'Invalid Vimeo URL: {error_msg}'}), 400
+        
+        # Test accessibility
+        is_accessible, access_error = validate_vimeo_accessibility(normalized_url)
+        if not is_accessible:
+            return jsonify({
+                'error': f'Vimeo video is not accessible: {access_error}',
+                'suggestion': 'Please check the video privacy settings and ensure embed is enabled for "Anywhere"'
+            }), 400
+        
+        # Generate document ID
+        document_id = str(uuid.uuid4())
+        
+        # Create a friendly filename from video ID
+        original_filename = f"vimeo_{video_id}.mp4"
+        
+        try:
+            # Create the Cosmos metadata with status="Queued"
+            create_document(
+                file_name=original_filename,
+                user_id=user_id,
+                document_id=document_id,
+                num_file_chunks=0,
+                status="Queued for processing"
+            )
+            
+            # Set initial percentage
+            update_document(
+                document_id=document_id,
+                user_id=user_id,
+                percentage_complete=0,
+                vimeo_url=normalized_url  # Store Vimeo URL immediately
+            )
+            
+            # Run processing in background - pass vimeo_url and NO temp_file_path
+            future = current_app.extensions['executor'].submit_stored(
+                document_id,
+                process_video_document,
+                document_id=document_id,
+                user_id=user_id,
+                temp_file_path=None,  # No file upload
+                original_filename=original_filename,
+                update_callback=lambda **kwargs: update_document(
+                    document_id=document_id,
+                    user_id=user_id,
+                    **kwargs
+                ),
+                group_id=None,
+                public_workspace_id=None,
+                vimeo_url=normalized_url  # Pass Vimeo URL
+            )
+            
+            return jsonify({
+                'message': 'Vimeo video submitted for processing successfully',
+                'document_id': document_id,
+                'filename': original_filename,
+                'vimeo_url': normalized_url
+            }), 200
+            
+        except Exception as e:
+            print(f"Error processing Vimeo video: {e}")
+            return jsonify({'error': f'Failed to process Vimeo video: {str(e)}'}), 500
+
+    @app.route('/api/documents/upload_to_vimeo', methods=['POST'])
+    @login_required
+    @user_required
+    @enabled_required("enable_user_workspace")
+    def api_user_upload_video_to_vimeo():
+        """
+        Upload a video file directly to Vimeo, then process via Video Indexer.
+        This provides a seamless upload experience with professional streaming.
+        """
+        from functions_vimeo import is_vimeo_enabled, upload_and_process_vimeo_video
+        
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        # Check if Vimeo upload is enabled
+        if not is_vimeo_enabled():
+            return jsonify({
+                'error': 'Vimeo upload not enabled',
+                'message': 'Please set VIMEO_ENABLE_UPLOAD=true and configure VIMEO_ACCESS_TOKEN'
+            }), 403
+        
+        # Check for file in request
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        if not file.filename:
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Validate file is a video
+        original_filename = file.filename
+        file_ext = os.path.splitext(original_filename)[1].lower()
+        video_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv', '.webm'}
+        
+        if file_ext not in video_extensions:
+            return jsonify({
+                'error': f'Invalid file type: {file_ext}',
+                'message': 'Only video files are supported for Vimeo upload'
+            }), 400
+        
+        # Generate document ID
+        document_id = str(uuid.uuid4())
+        
+        # Save file temporarily
+        try:
+            sc_temp_files_dir = "/sc-temp-files" if os.path.exists("/sc-temp-files") else ""
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext, dir=sc_temp_files_dir) as tmp_file:
+                file.save(tmp_file.name)
+                temp_file_path = tmp_file.name
+                
+            # Get file size
+            file_size = os.path.getsize(temp_file_path)
+            
+            # Create document metadata
+            create_document(
+                file_name=original_filename,
+                user_id=user_id,
+                document_id=document_id,
+                num_file_chunks=0,
+                status="Uploading to Vimeo..."
+            )
+            
+            # Set initial percentage
+            update_document(
+                document_id=document_id,
+                user_id=user_id,
+                percentage_complete=0
+            )
+            
+            # Define update callback
+            def update_status(**kwargs):
+                try:
+                    update_document(
+                        document_id=document_id,
+                        user_id=user_id,
+                        **kwargs
+                    )
+                except Exception as e:
+                    print(f"Error updating document status: {e}")
+            
+            # Run Vimeo upload and processing in background
+            future = current_app.extensions['executor'].submit_stored(
+                f"{document_id}_vimeo",
+                process_vimeo_video_workflow,
+                document_id=document_id,
+                user_id=user_id,
+                temp_file_path=temp_file_path,
+                original_filename=original_filename,
+                file_size=file_size,
+                update_callback=update_status
+            )
+            
+            return jsonify({
+                'message': 'Video upload to Vimeo started successfully',
+                'document_id': document_id,
+                'filename': original_filename,
+                'status': 'Uploading to Vimeo...'
+            }), 200
+            
+        except Exception as e:
+            print(f"Error initiating Vimeo upload: {e}")
+            # Clean up temp file
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                except:
+                    pass
+            return jsonify({'error': f'Failed to initiate Vimeo upload: {str(e)}'}), 500
 
     @app.route('/api/documents', methods=['GET'])
     @login_required

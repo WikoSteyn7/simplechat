@@ -72,3 +72,4 @@
         window.SIMPLECHAT_AUTH_DISABLED = true;
     }
 })();
+

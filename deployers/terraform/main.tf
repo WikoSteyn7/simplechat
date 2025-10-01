@@ -321,8 +321,8 @@ resource "azurerm_storage_account" "sa" {
   account_kind             = "StorageV2"
   access_tier              = "Hot"
   allow_nested_items_to_be_public =  false
-  public_network_access_enabled = false # From script's allow-blob-public-access false
-  shared_access_key_enabled = false
+  public_network_access_enabled = true  # Enable for development
+  shared_access_key_enabled = true      # Enable for development
   tags                     = local.common_tags
 }
 
@@ -427,6 +427,9 @@ resource "azurerm_linux_web_app" "app" {
     "XDT_MicrosoftApplicationInsights_PreemptSdk" = "disabled"
     # Disable authentication completely
     "DISABLE_AUTH" = "true"
+    # Storage account connection for blob uploads
+    "AZURE_STORAGE_CONNECTION_STRING" = azurerm_storage_account.sa.primary_connection_string
+    "AZURE_STORAGE_ACCOUNT_NAME" = azurerm_storage_account.sa.name
   }
 
   site_config {

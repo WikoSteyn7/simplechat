@@ -280,8 +280,19 @@ async function uploadWorkspaceFiles(files) {
        const formData = new FormData();
        formData.append("file", file, file.name);
 
+       // Determine upload endpoint based on file type and mode
+       let uploadEndpoint = "/api/documents/upload"; // Default
+       
+       // If this is a video file AND Vimeo mode is active, use Vimeo upload
+       if (isVideoFile(file.name) && currentVideoUploadMode === 'vimeo') {
+           uploadEndpoint = "/api/documents/upload_to_vimeo";
+           if (statusText) {
+               statusText.textContent = `Uploading ${file.name} to Vimeo (0%)`;
+           }
+       }
+
        const xhr = new XMLHttpRequest();
-       xhr.open("POST", "/api/documents/upload", true);
+       xhr.open("POST", uploadEndpoint, true);
 
        xhr.upload.onprogress = function (e) {
            if (e.lengthComputable) {
@@ -349,7 +360,127 @@ async function uploadWorkspaceFiles(files) {
        };
 
        xhr.send(formData);
-   });
+    });
+}
+
+// Video Upload Mode Toggle Handler
+const videoModeVimeo = document.getElementById("video-mode-vimeo");
+const videoModeManual = document.getElementById("video-mode-manual");
+const vimeoModeInfo = document.getElementById("vimeo-mode-info");
+const manualModeInfo = document.getElementById("manual-mode-info");
+const vimeoManualUrlSection = document.getElementById("vimeo-manual-url-section");
+
+// Track current upload mode
+let currentVideoUploadMode = 'vimeo'; // Default to Vimeo auto-upload
+
+if (videoModeVimeo && videoModeManual && vimeoModeInfo && manualModeInfo && vimeoManualUrlSection) {
+    videoModeVimeo.addEventListener("change", () => {
+        if (videoModeVimeo.checked) {
+            currentVideoUploadMode = 'vimeo';
+            vimeoModeInfo.style.display = 'block';
+            manualModeInfo.style.display = 'none';
+            vimeoManualUrlSection.style.display = 'none';
+        }
+    });
+    
+    videoModeManual.addEventListener("change", () => {
+        if (videoModeManual.checked) {
+            currentVideoUploadMode = 'manual';
+            vimeoModeInfo.style.display = 'none';
+            manualModeInfo.style.display = 'block';
+            vimeoManualUrlSection.style.display = 'block';
+        }
+    });
+}
+
+// Helper function to detect if file is a video
+function isVideoFile(filename) {
+    const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv', '.webm'];
+    const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
+    return videoExtensions.includes(ext);
+}
+
+// Vimeo URL Submission Handler (Manual Mode)
+const vimeoUrlInput = document.getElementById("vimeo-url-input");
+const submitVimeoBtn = document.getElementById("submit-vimeo-btn");
+const vimeoStatus = document.getElementById("vimeo-status");
+
+if (submitVimeoBtn && vimeoUrlInput && vimeoStatus) {
+    submitVimeoBtn.addEventListener("click", async () => {
+        const vimeoUrl = vimeoUrlInput.value.trim();
+        
+        if (!vimeoUrl) {
+            showVimeoStatus("Please enter a Vimeo URL", "danger");
+            return;
+        }
+        
+        // Basic client-side validation
+        if (!vimeoUrl.includes("vimeo.com")) {
+            showVimeoStatus("Please enter a valid Vimeo URL", "danger");
+            return;
+        }
+        
+        // Disable button and show loading state
+        submitVimeoBtn.disabled = true;
+        submitVimeoBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Validating...';
+        showVimeoStatus("Validating Vimeo URL...", "info");
+        
+        try {
+            const response = await fetch("/api/documents/upload_vimeo", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ vimeo_url: vimeoUrl })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showVimeoStatus(`✓ Video submitted successfully! Processing ${data.filename}...`, "success");
+                vimeoUrlInput.value = ""; // Clear input
+                
+                // Refresh documents table to show new video
+                setTimeout(() => {
+                    fetchUserDocuments();
+                    showVimeoStatus("", "");
+                }, 2000);
+            } else {
+                let errorMsg = data.error || "Failed to submit Vimeo video";
+                if (data.suggestion) {
+                    errorMsg += `\n\n${data.suggestion}`;
+                }
+                showVimeoStatus(errorMsg, "danger");
+            }
+        } catch (error) {
+            console.error("Error submitting Vimeo URL:", error);
+            showVimeoStatus(`Error: ${error.message}`, "danger");
+        } finally {
+            // Re-enable button
+            submitVimeoBtn.disabled = false;
+            submitVimeoBtn.innerHTML = '<i class="bi bi-plus-circle me-1"></i>Submit';
+        }
+    });
+    
+    // Allow Enter key to submit
+    vimeoUrlInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+            submitVimeoBtn.click();
+        }
+    });
+}
+
+function showVimeoStatus(message, type) {
+    if (!vimeoStatus) return;
+    
+    if (!message) {
+        vimeoStatus.style.display = "none";
+        return;
+    }
+    
+    vimeoStatus.style.display = "block";
+    vimeoStatus.className = `mt-2 small alert alert-${type} mb-0`;
+    vimeoStatus.textContent = message;
 }
 
 // Upload Button Handler
