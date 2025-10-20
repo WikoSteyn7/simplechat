@@ -56,6 +56,7 @@ from plugin_validation_endpoint import plugin_validation_bp
 from route_openapi import register_openapi_routes
 from route_migration import bp_migration
 from route_plugin_logging import bpl as plugin_logging_bp
+from route_frontend_react_chat import register_route_frontend_react_chat
 
 app = Flask(__name__)
 
@@ -469,6 +470,9 @@ register_route_frontend_safety(app)
 
 # ------------------- Feedback Routes -------------------
 register_route_frontend_feedback(app)
+
+# ------------------- React Chat Route -------------------
+register_route_frontend_react_chat(app)
 
 # ------------------- API Chat Routes --------------------
 register_route_backend_chats(app)

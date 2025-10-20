@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/favicon.ico') }}" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="theme-color" content="#FFFFFF">
+    <title>Chat - {{ app_settings.app_title if app_settings else 'SuperWorker' }}</title>
+    
+    {% if app_settings %}
+    <!-- Preload classification banner data if enabled -->
+    <script>
+      window.CLASSIFICATION_BANNER_ENABLED = {{ 'true' if app_settings.classification_banner_enabled else 'false' }};
+      window.CLASSIFICATION_BANNER_TEXT = "{{ app_settings.classification_banner_text if app_settings.classification_banner_enabled else '' }}";
+      window.CLASSIFICATION_BANNER_COLOR = "{{ app_settings.classification_banner_color if app_settings.classification_banner_enabled else '' }}";
+    </script>
+    {% endif %}
+    
+    <!-- React App Styles -->
+    {% if config['ENV'] == 'development' %}
+    <!-- Development mode - Vite dev server -->
+    <script type="module">
+      import RefreshRuntime from 'http://localhost:5173/@react-refresh'
+      RefreshRuntime.injectIntoGlobalHook(window)
+      window.$RefreshReg$ = () => {}
+      window.$RefreshSig$ = () => (type) => type
+      window.__vite_plugin_react_preamble_installed__ = true
+    </script>
+    <script type="module" src="http://localhost:5173/@vite/client"></script>
+    <script type="module" src="http://localhost:5173/src/main.jsx"></script>
+    {% else %}
+    <!-- Production mode - built assets -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='react_chat/assets/index.css') }}">
+    {% endif %}
+  </head>
+  <body>
+    <div id="root"></div>
+    
+    {% if config['ENV'] != 'development' %}
+    <script type="module" src="{{ url_for('static', filename='react_chat/assets/index.js') }}"></script>
+    {% endif %}
+  </body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

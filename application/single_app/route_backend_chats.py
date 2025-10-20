@@ -577,8 +577,8 @@ def register_route_backend_chats(app):
                 try:
                     # Prepare search arguments
                     # Set default and maximum values for top_n
-                    default_top_n = 12
-                    max_top_n = 500  # Reasonable cap to prevent excessive resource usage
+                    default_top_n = 10
+                    max_top_n = 200  # Reasonable cap to prevent excessive resource usage
                     
                     # Process top_n_results if provided
                     if top_n_results is not None:
